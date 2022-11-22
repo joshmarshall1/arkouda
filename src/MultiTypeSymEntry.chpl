@@ -435,6 +435,36 @@ module MultiTypeSymEntry
         }
     }
 
+    class CategoricalSymEntry:GenSymEntry {
+        type etype = string;
+
+        var categoriesEntry: borrowed SegStringSymEntry(string);
+        var codesEntry: shared SymEntry(int);
+        var permEntry: shared SymEntry(int);
+        var segmentsEntry: shared SymEntry(int);
+
+        proc init(categoriesEntry: borrowed SegStringSymEntry, codesEntry: shared SymEntry,
+                    permEntry: shared SymEntry, segmentsEntry: shared SymEntry, type etype) {
+            super.init(etype, categoriesEntry.size);
+            this.entryType = SymbolEntryType.CategoricalSymEntry;
+            assignableTypes.add(this.entryType);
+            this.categoriesEntry = categoriesEntry;
+            this.codesEntry = codesEntry;
+            this.permEntry = permEntry;
+            this.segmentsEntry = segmentsEntry;
+
+            this.dtype = whichDtype(etype);
+            this.itemsize = this.categoriesEntry.itemsize;
+            this.size = this.segmentsEntry.size;
+            this.ndim = this.segmentsEntry.ndim;
+            this.shape = this.segmentsEntry.shape;
+        }
+
+        override proc getSizeEstimate(): int {
+            return this.segmentsEntry.getSizeEstimate() + this.categoriesEntry.getSizeEstimate();
+        }
+    }
+
     /*
         Symbol Table entry representing a GroupBy object.
     */

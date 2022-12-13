@@ -363,7 +363,7 @@ class GroupByTest(ArkoudaTest):
 
     def test_multi_level_categorical(self):
         string = ak.array(["a", "b", "a", "b", "c"])
-        cat = ak.Categorical(string)
+        cat = ak.categorical(string)
         cat_from_codes = ak.Categorical.from_codes(
             codes=ak.array([0, 1, 0, 1, 2]), categories=ak.array(["a", "b", "c"])
         )
@@ -390,7 +390,7 @@ class GroupByTest(ArkoudaTest):
 
     def test_nunique_types(self):
         string = ak.array(["a", "b", "a", "b", "c"])
-        cat = ak.Categorical(string)
+        cat = ak.categorical(string)
         i = ak.array([5, 3, 5, 3, 1])
         # Try GroupBy.nunique with every combination of types, including mixed
         keys = (string, cat, i, (string, cat, i))

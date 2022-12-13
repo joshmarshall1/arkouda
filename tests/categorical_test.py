@@ -18,10 +18,10 @@ class CategoricalTest(ArkoudaTest):
         io_util.get_directory(CategoricalTest.cat_test_base_tmp)
 
     def _getCategorical(self, prefix: str = "string", size: int = 11) -> ak.Categorical:
-        return ak.Categorical(ak.array(["{} {}".format(prefix, i) for i in range(1, size)]))
+        return ak.categorical(ak.array(["{} {}".format(prefix, i) for i in range(1, size)]))
 
     def _getRandomizedCategorical(self) -> ak.Categorical:
-        return ak.Categorical(
+        return ak.categorical(
             ak.array(
                 [
                     "string",
@@ -69,7 +69,7 @@ class CategoricalTest(ArkoudaTest):
         self.assertEqual("Categorical", cat.objtype)
 
         with self.assertRaises(ValueError):
-            ak.Categorical(ak.arange(0, 5, 10))
+            ak.categorical(ak.arange(0, 5, 10))
 
     def testCategoricalFromCodesAndCategories(self):
         codes = ak.array([7, 5, 9, 8, 2, 1, 4, 0, 3, 6])
@@ -115,7 +115,7 @@ class CategoricalTest(ArkoudaTest):
         cat = self._getRandomizedCategorical()
 
         self.assertListEqual(
-            ak.Categorical(
+            ak.categorical(
                 ak.array(["string", "string1", "string3", "non-string", "non-string2"])
             ).to_list(),
             cat.unique().to_list(),
@@ -147,8 +147,8 @@ class CategoricalTest(ArkoudaTest):
         self.assertListEqual(cat.to_list(), catDupe.to_list())
         self.assertFalse((cat == catNonDupe).any())
 
-        c1 = ak.Categorical(ak.array(["a", "b", "c", "a", "b"]))
-        c2 = ak.Categorical(ak.array(["a", "x", "c", "y", "b"]))
+        c1 = ak.categorical(ak.array(["a", "b", "c", "a", "b"]))
+        c2 = ak.categorical(ak.array(["a", "x", "c", "y", "b"]))
         res = c1 == c2
         self.assertListEqual(res.to_list(), [True, False, True, False, True])
 
@@ -202,8 +202,8 @@ class CategoricalTest(ArkoudaTest):
 
         stringsOne = ak.array(["String {}".format(i) for i in vals])
         stringsTwo = ak.array(["String {}".format(i) for i in valsTwo])
-        catOne = ak.Categorical(stringsOne)
-        catTwo = ak.Categorical(stringsTwo)
+        catOne = ak.categorical(stringsOne)
+        catTwo = ak.categorical(stringsTwo)
 
         answer = [x < 2 for x in vals]
 
@@ -241,24 +241,24 @@ class CategoricalTest(ArkoudaTest):
         # and test result against original strings
         s1 = ak.array(["abc", "de", "abc", "fghi", "de"])
         s2 = ak.array(["jkl", "mno", "fghi", "abc", "fghi", "mno"])
-        c1 = ak.Categorical(s1)
-        c2 = ak.Categorical(s2)
+        c1 = ak.categorical(s1)
+        c2 = ak.categorical(s2)
         # Ordered concatenation
         s12ord = ak.concatenate([s1, s2], ordered=True)
         c12ord = ak.concatenate([c1, c2], ordered=True)
-        self.assertListEqual(ak.Categorical(s12ord).to_list(), c12ord.to_list())
+        self.assertListEqual(ak.categorical(s12ord).to_list(), c12ord.to_list())
         # Unordered (but still deterministic) concatenation
         s12unord = ak.concatenate([s1, s2], ordered=False)
         c12unord = ak.concatenate([c1, c2], ordered=False)
-        self.assertListEqual(ak.Categorical(s12unord).to_list(), c12unord.to_list())
+        self.assertListEqual(ak.categorical(s12unord).to_list(), c12unord.to_list())
 
         # Tiny concatenation
         # Used to fail when length of array was less than numLocales
         # CI uses 2 locales, so try with length-1 arrays
-        a = ak.Categorical(ak.array(["a"]))
-        b = ak.Categorical(ak.array(["b"]))
+        a = ak.categorical(ak.array(["a"]))
+        b = ak.categorical(ak.array(["b"]))
         c = ak.concatenate((a, b), ordered=False)
-        ans = ak.Categorical(ak.array(["a", "b"]))
+        ans = ak.categorical(ak.array(["a", "b"]))
         self.assertListEqual(c.to_list(), ans.to_list())
 
     def testSaveAndLoadCategorical(self):
@@ -316,7 +316,7 @@ class CategoricalTest(ArkoudaTest):
         """
         s = ak.array([str(i) for i in range(10)])
         s12 = s[1:3]
-        cat = ak.Categorical(s)
+        cat = ak.categorical(s)
         cat12 = cat[1:3]
         self.assertListEqual(ak.in1d(s, s12).to_list(), ak.in1d(cat, cat12).to_list())
         self.assertSetEqual(set(ak.unique(s12).to_list()), set(ak.unique(cat12).to_list()))
@@ -354,7 +354,7 @@ class CategoricalTest(ArkoudaTest):
     def testNA(self):
         s = ak.array(["A", "B", "C", "B", "C"])
         # NAval present in categories
-        c = ak.Categorical(s, NAvalue="C")
+        c = ak.categorical(s, NAvalue="C")
         self.assertListEqual(c.isna().to_list(), [False, False, True, False, True])
         self.assertEqual(c.NAvalue, "C")
         # Test that NAval survives registration
@@ -363,13 +363,13 @@ class CategoricalTest(ArkoudaTest):
         self.assertEqual(c2.NAvalue, "C")
 
         # default NAval not present in categories
-        c = ak.Categorical(s)
+        c = ak.categorical(s)
         self.assertTrue(not c.isna().any())
         self.assertEqual(c.NAvalue, "N/A")
 
     def testStandardizeCategories(self):
-        c1 = ak.Categorical(ak.array(["A", "B", "C"]))
-        c2 = ak.Categorical(ak.array(["B", "C", "D"]))
+        c1 = ak.categorical(ak.array(["A", "B", "C"]))
+        c2 = ak.categorical(ak.array(["B", "C", "D"]))
         c3, c4 = ak.Categorical.standardize_categories([c1, c2])
         self.assertListEqual(c3.categories.to_list(), c4.categories.to_list())
         self.assertTrue(not c3.isna().any())
@@ -379,7 +379,7 @@ class CategoricalTest(ArkoudaTest):
 
     def testLookup(self):
         keys = ak.array([1, 2, 3])
-        values = ak.Categorical(ak.array(["A", "B", "C"]))
+        values = ak.categorical(ak.array(["A", "B", "C"]))
         args = ak.array([3, 2, 1, 0])
         ret = ak.lookup(keys, values, args)
         self.assertListEqual(ret.to_list(), ["C", "B", "A", "N/A"])

@@ -18,6 +18,7 @@ module RegistrationMsg
     use SegmentedString;
     use SegmentedArray;
     use SegmentedMsg;
+    use Categorical;
 
     private config const logLevel = ServerConfig.logLevel;
     const regLogger = new Logger(logLevel);
@@ -124,6 +125,14 @@ module RegistrationMsg
 
                 repMsg = "%jt".format(rtnmap);
             }
+            else if objType.toLower() == "categorical" {
+                var rtnmap: map(string, string) = new map(string, string);
+
+                var cat = getCategorical(name, st);
+                cat.fillReturnMap(rtnmap, st);
+
+                repMsg = "%jt".format(rtnmap);
+            }
             else if objType == "" || objType == "str" || objType == "pdarray" {
                 repMsg = "created %s".format(attrib);
                 if (isStringAttrib(attrib)) {
@@ -139,80 +148,6 @@ module RegistrationMsg
             regLogger.debug(getModuleName(),getRoutineName(),getLineNumber(),repMsg);
             return new MsgTuple(repMsg, MsgType.NORMAL); 
         }
-    }
-
-    /* 
-    Compile the component parts of a Categorical attach message 
-
-    :arg cmd: calling command 
-    :type cmd: string 
-
-    :arg name: name of SymTab element
-    :type name: string
-
-    :arg st: SymTab to act on
-    :type st: borrowed SymTab 
-
-    :returns: MsgTuple response message
-    */
-    proc attachCategoricalMsg(cmd: string, name: string, 
-                                            st: borrowed SymTab): MsgTuple throws {
-        regLogger.debug(getModuleName(),getRoutineName(),getLineNumber(), 
-                            "%s: Collecting Categorical components for '%s'".format(cmd, name));
-
-        var repMsg: string;
-                
-        var cats = st.attrib("%s.categories".format(name));
-        var codes = st.attrib("%s.codes".format(name));
-        var naCode = st.attrib("%s._akNAcode".format(name));
-
-        if (cats.startsWith("Error:")) { 
-            var errorMsg = cats;
-            regLogger.error(getModuleName(),getRoutineName(),getLineNumber(),errorMsg);
-            return new MsgTuple(errorMsg, MsgType.ERROR); 
-        }
-        if (codes.startsWith("Error:")) { 
-            var errorMsg = codes;
-            regLogger.error(getModuleName(),getRoutineName(),getLineNumber(),errorMsg);
-            return new MsgTuple(errorMsg, MsgType.ERROR); 
-        }
-        if (naCode.startsWith("Error:")) { 
-            var errorMsg = naCode;
-            regLogger.error(getModuleName(),getRoutineName(),getLineNumber(),errorMsg);
-            return new MsgTuple(errorMsg, MsgType.ERROR); 
-        }
-
-        repMsg = "categorical+created %s".format(cats);
-        // Check if the categories is numeric or string, if string add byte size
-        if (isStringAttrib(cats)) {
-            var s = getSegString("%s.categories".format(name), st);
-            repMsg += "+created bytes.size %t".format(s.nBytes);
-        }
-
-        repMsg += "+created %s".format(codes);
-        repMsg += "+created %s".format(naCode);
-
-        // Optional components of categorical
-        if st.contains("%s.permutation".format(name)) {
-            var perm = st.attrib("%s.permutation".format(name));
-            if (perm.startsWith("Error:")) { 
-                var errorMsg = perm;
-                regLogger.error(getModuleName(),getRoutineName(),getLineNumber(),errorMsg);
-                return new MsgTuple(errorMsg, MsgType.ERROR); 
-            }
-            repMsg += "+created %s".format(perm);
-        }
-        if st.contains("%s.segments".format(name)) {
-            var segs = st.attrib("%s.segments".format(name));
-            if (segs.startsWith("Error:")) { 
-                var errorMsg = segs;
-                regLogger.error(getModuleName(),getRoutineName(),getLineNumber(),errorMsg);
-                return new MsgTuple(errorMsg, MsgType.ERROR); 
-            }
-            repMsg += "+created %s".format(segs);
-        }
-
-        return new MsgTuple(repMsg, MsgType.NORMAL);
     }
 
 
@@ -355,7 +290,10 @@ module RegistrationMsg
                     msg = "segarray+%s+%s".format(regName, attachMsg(cmd, subArgs, st).msg);
                 }
                 when ("Categorical") {
-                    msg = attachCategoricalMsg(cmd, regName, st).msg;
+                    var attParam = new ParameterObj("name", regName, ObjectType.VALUE, "");
+                    var objParam =  new ParameterObj("objtype", objtype, ObjectType.VALUE, "");
+                    var subArgs = new MessageArgs(new list([attParam, objParam]));
+                    msg = "categorical+%s+%s".format(regName, attachMsg(cmd, subArgs, st).msg);
                 }
                 otherwise {
                     regLogger.warn(getModuleName(),getRoutineName(),getLineNumber(), 
@@ -408,12 +346,12 @@ module RegistrationMsg
             var entry = st.lookup(name);
             if entry.isAssignableTo(SymbolEntryType.SegArraySymEntry) {
                 objtype = "segarray";
+            } else if entry.isAssignableTo(SymbolEntryType.CategoricalSymEntry) {
+                objtype = "categorical";
             } else {
                 // pdarray or Strings
                 objtype = "simple";
             }
-        } else if st.contains("%s.categories".format(name)) && st.contains("%s.codes".format(name)) {
-            objtype = "categorical";
         } else if st.contains("%s_value".format(name)) && (st.contains("%s_key".format(name)) || st.contains("%s_key_0".format(name))) {
             objtype = "series";
         } else if st.contains("df_columns_%s".format(name)) && (st.contains("df_index_%s_key".format(name))) {
@@ -483,7 +421,14 @@ module RegistrationMsg
                 return new MsgTuple(repMsg, msgType);
             }
             when ("categorical") {
-                return attachCategoricalMsg(cmd, name, st);
+                var attParam = new ParameterObj("name", name, ObjectType.VALUE, "");
+                var objParam =  new ParameterObj("objtype", dtype, ObjectType.VALUE, "");
+                var subArgs = new MessageArgs(new list([attParam, objParam]));
+                var aRet = attachMsg(cmd, subArgs, st);
+                var msg = aRet.msg;
+                var msgType = aRet.msgType;
+                repMsg = "categorical+%s".format(msg);
+                return new MsgTuple(repMsg, msgType);
             }
             when ("series") {
                 return attachSeriesMsg(cmd, name, st);
@@ -554,7 +499,7 @@ module RegistrationMsg
             dtype = findType(cmd, name, st);
         }
 
-        if simpleTypes.contains(dtype.toLower()) || dtype == "segarray" {
+        if simpleTypes.contains(dtype.toLower()) || dtype == "segarray" || dtype == "categorical" {
             dtype = "simple";
         }
 
@@ -563,32 +508,6 @@ module RegistrationMsg
                 // pdarray and strings can use the unregisterMsg method without any other processing
                 var subArgs = new MessageArgs(new list([msgArgs.get("name")]));
                 return unregisterMsg(cmd, subArgs, st);
-            }
-            when ("categorical") {
-                // Create an array with 5 strings, one for each component of categorical, and assign the names
-                var nameList: [0..4] string;
-                nameList[0] = "%s.categories".format(name);
-                nameList[1] = "%s.codes".format(name);
-                nameList[2] = "%s._akNAcode".format(name);
-                
-                if st.contains("%s.permutation".format(name)) {
-                    nameList[3] = "%s.permutation".format(name);
-                }
-                if st.contains("%s.segments".format(name)) {
-                    nameList[4] = "%s.segments".format(name);
-                }
-
-                var base_json = msgArgs.get("name");
-
-                for n in nameList {
-                    // Check for "" in case optional components aren't found
-                    if n != "" {
-                        base_json.setVal(n);
-                        var subArgs = new MessageArgs(new list([base_json]));
-                        var resp = unregisterMsg(cmd, subArgs, st);
-                        status += " %s: %s ".format(n, resp.msg);
-                    }
-                }
             }
             when ("series") {
                 // Identify if the series contains MultiIndex or Single Index components

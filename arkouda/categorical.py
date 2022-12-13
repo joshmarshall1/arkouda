@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import itertools
 from collections import defaultdict
 from typing import (
@@ -18,6 +19,7 @@ from warnings import warn
 import numpy as np  # type: ignore
 from typeguard import typechecked
 
+from arkouda.client import generic_msg
 from arkouda.decorators import objtypedec
 from arkouda.dtypes import bool as akbool
 from arkouda.dtypes import int64 as akint64
@@ -31,14 +33,17 @@ from arkouda.pdarrayclass import (
     RegistrationError,
     create_pdarray,
     pdarray,
-    unregister_pdarray_by_name,
 )
 from arkouda.pdarraycreation import arange, array, ones, zeros, zeros_like
 from arkouda.pdarraysetops import concatenate, in1d
 from arkouda.sorting import argsort
 from arkouda.strings import Strings
 
-__all__ = ["Categorical"]
+__all__ = ["categorical", "Categorical"]
+
+
+def categorical(values, **kwargs):
+    return Categorical.from_parts(values, **kwargs)
 
 
 @objtypedec
@@ -83,64 +88,123 @@ class Categorical:
     permutation = None
     segments = None
 
-    def __init__(self, values, **kwargs) -> None:
+    def __init__(
+        self, name, type, size, ndim, shape, itemsize, categories,
+            codes, permutation, segments, akNACode, _categories_used
+    ):
+        self.name = name
+        self.type = type
+        self.size = size
+        self.ndim = ndim
+        self.shape = shape
+        self.itemsize = itemsize
+
+        self._categories_used = _categories_used
+
+        self.categories = categories
+        self.codes = codes
+        self.permutation = permutation
+        self.segments = segments
+
+        if akNACode is not None:
+            self._akNAcode = akNACode
+            self._NAcode = int(self._akNAcode[0])
+            self.NAvalue = categories[self._NAcode]
+        else:
+            self._akNAcode = None
+            self._NAcode = None
+            self.NAvalue = None
+
         self.logger = getArkoudaLogger(name=__class__.__name__)  # type: ignore
+
+    @classmethod
+    def from_return_msg(cls, rep_msg, _categories_used):
+        # parse return json
+        eles = json.loads(rep_msg)
+
+        # parse the create statement for segarray
+        fields = eles["categorical"].split()
+        name = fields[1]
+        dtype = fields[2]
+        size = int(fields[3])
+        ndim = int(fields[4])
+
+        # remove comma from 1 tuple with trailing comma
+        if fields[5][-2] == ",":
+            fields[5] = fields[5].replace(",", "")
+        shape = [int(el) for el in fields[5][1:-1].split(",")]
+        itemsize = int(fields[6])
+
+        # parse the create for the values pdarray
+        categories = Strings.from_return_msg(eles["categories"])
+        codes = create_pdarray(eles["codes"])
+        permutation = create_pdarray(eles["permutation"])
+        segments = create_pdarray(eles["segments"])
+        akNACode = create_pdarray(eles["akNAcode"])
+
+        return cls(
+            name, dtype, size, ndim, shape, itemsize, categories,
+            codes, permutation, segments, akNACode, _categories_used
+        )
+
+    @classmethod
+    def from_parts(cls, values, **kwargs):
+
         if "codes" in kwargs and "categories" in kwargs:
             # This initialization is called by Categorical.from_codes()
             # The values arg is ignored
-            self.codes = kwargs["codes"]
-            self.categories = kwargs["categories"]
-            if (self.codes.min() < 0) or (self.codes.max() >= self.categories.size):
+            codes = kwargs["codes"]
+            categories = kwargs["categories"]
+            if (codes.min() < 0) or (codes.max() >= categories.size):
                 raise ValueError(
-                    f"Codes out of bounds for categories: min = {self.codes.min()},"
-                    f" max = {self.codes.max()}, categories = {self.categories.size}"
+                    f"Codes out of bounds for categories: min = {codes.min()},"
+                    f" max = {codes.max()}, categories = {categories.size}"
                 )
-            self.permutation = kwargs.get("permutation", None)
-            self.segments = kwargs.get("segments", None)
-            if self.permutation is not None and self.segments is not None:
+            permutation = kwargs.get("permutation", None)
+            segments = kwargs.get("segments", None)
+            if permutation is not None and segments is not None:
                 # Permutation and segments should only ever be supplied together from
                 # the .from_codes() method, not user input
-                self.permutation = cast(pdarray, self.permutation)
-                self.segments = cast(pdarray, self.segments)
-                unique_codes = self.codes[self.permutation[self.segments]]
+                permutation = cast(pdarray, permutation)
+                segments = cast(pdarray, segments)
+                unique_codes = codes[permutation[segments]]
             else:
-                unique_codes = unique(self.codes)
-            self._categories_used = self.categories[unique_codes]
+                unique_codes = unique(codes)
+            _categories_used = categories[unique_codes]
         else:
             # Typical initialization, called with values
             if not isinstance(values, Strings):
-                raise ValueError(("Categorical: inputs other than " + "Strings not yet supported"))
+                raise ValueError("Categorical: inputs other than Strings not yet supported")
             g = GroupBy(values)
-            self.categories = g.unique_keys
-            self.codes = g.broadcast(arange(self.categories.size), permute=True)
-            self.permutation = cast(pdarray, g.permutation)
-            self.segments = g.segments
+            categories = g.unique_keys
+            codes = g.broadcast(arange(categories.size), permute=True)
+            permutation = cast(pdarray, g.permutation)
+            segments = g.segments
             # Make a copy because N/A value must be added below
-            self._categories_used = self.categories[:]
+            _categories_used = categories[:]
 
         # When read from file or attached, NA code will be passed as a pdarray
         # Otherwise, the NA value is set to a string
         if "_akNAcode" in kwargs:
-            self._akNAcode = kwargs["_akNAcode"]
-            self._NAcode = int(self._akNAcode[0])
-            self.NAvalue = self.categories[self._NAcode]
+            _akNAcode = kwargs["_akNAcode"]
         else:
-            self.NAvalue = kwargs.get("NAvalue", "N/A")
-            findNA = self.categories == self.NAvalue
+            NAvalue = kwargs.get("NAvalue", "N/A")
+            findNA = categories == NAvalue
             if findNA.any():
-                self._NAcode = int(akcast(findNA, akint64).argmax())
+                _NAcode = int(akcast(findNA, akint64).argmax())
             else:
                 # Append NA value
-                self.categories = concatenate((self.categories, array([self.NAvalue])))
-                self._NAcode = self.categories.size - 1
-            self._akNAcode = array([self._NAcode])
-        # Always set these values
-        self.size: int_scalars = self.codes.size
-        self.nlevels = self.categories.size
-        self.ndim = self.codes.ndim
-        self.shape = self.codes.shape
-        self.dtype = str_
-        self.name: Optional[str] = None
+                categories = concatenate((categories, array([NAvalue])))
+                _NAcode = categories.size - 1
+            _akNAcode = array([_NAcode])
+
+        msg = generic_msg(
+            cmd="assemble-categorical",
+            args={"categories": categories, "codes": codes, "perm": permutation,
+                  "segments": segments, "akNAcode": _akNAcode},
+        )
+
+        return cls.from_return_msg(msg, _categories_used)
 
     @property
     def objtype(self):
@@ -181,12 +245,12 @@ class Categorical:
         """
         if codes.dtype != akint64:
             raise TypeError("Codes must be pdarray of int64")
-        return cls(
+        return cls.from_parts(
             None,
             codes=codes,
             categories=categories,
-            permutation=permutation,
-            segments=segments,
+            permutation=permutation if not None else array([]),
+            segments=segments if not None else array([]),
             **kwargs,
         )
 
@@ -277,7 +341,7 @@ class Categorical:
         return self.__class__.from_codes(new_codes, new_categories, NAvalue=NAvalue)
 
     @staticmethod
-    def from_return_msg(repMsg):
+    def _from_return_msg(repMsg):
         """
         Return a categorical instance pointing to components created by the arkouda server.
         The user should not call this function directly.
@@ -921,7 +985,7 @@ class Categorical:
                         prefix_path,
                         dataset=f"{dataset}.{k}",
                         mode=(mode if first else "append"),
-                        compressed=compressed
+                        compressed=compressed,
                     )
                 )
                 first = False
@@ -1048,10 +1112,18 @@ class Categorical:
         Objects registered with the server are immune to deletion until
         they are unregistered.
         """
-        [
-            p.register(f"{user_defined_name}.{n}")
-            for n, p in Categorical._get_components_dict(self).items()
-        ]
+        try:
+            rep_msg = generic_msg(
+                cmd="register", args={"array": self.name, "user_name": user_defined_name}
+            )
+            if rep_msg != "success":
+                raise RegistrationError
+        except (
+            RuntimeError,
+            RegistrationError,
+        ):  # Registering two objects with the same name is not allowed
+            raise RegistrationError(f"Server was unable to register {user_defined_name}")
+
         self.name = user_defined_name
         return self
 
@@ -1079,16 +1151,15 @@ class Categorical:
             raise RegistrationError(
                 "This item does not have a name and does not appear to be registered."
             )
-        [p.unregister() for p in Categorical._get_components_dict(self).values()]
-        self.name = None  # Clear our internal Categorical object name
+        generic_msg(cmd="unregister", args={"name": self.name})
 
-    def is_registered(self) -> np.bool_:
+    def is_registered(self) -> bool:
         """
          Return True iff the object is contained in the registry
 
         Returns
         -------
-        numpy.bool
+        bool
             Indicates if the object is contained in the registry
 
         Raises
@@ -1105,15 +1176,7 @@ class Categorical:
         Objects registered with the server are immune to deletion until
         they are unregistered.
         """
-        parts_registered: List[np.bool_] = [
-            p.is_registered() for p in Categorical._get_components_dict(self).values()
-        ]
-        if np.any(parts_registered) and not np.all(parts_registered):  # test for error
-            raise RegistrationError(
-                f"Not all registerable components of Categorical {self.name} are registered."
-            )
-
-        return np.bool_(np.any(parts_registered))
+        return self.name in list_registry()
 
     def _get_components_dict(self) -> Dict:
         """
@@ -1185,9 +1248,9 @@ class Categorical:
         """
         [p.pretty_print_info() for p in Categorical._get_components_dict(self).values()]
 
-    @staticmethod
+    @classmethod
     @typechecked
-    def attach(user_defined_name: str) -> Categorical:
+    def attach(cls, user_defined_name: str) -> Categorical:
         """
         Function to return a Categorical object attached to the registered name in the
         arkouda server which was registered using register()
@@ -1211,23 +1274,14 @@ class Categorical:
         --------
         register, is_registered, unregister, unregister_categorical_by_name
         """
-        # Build dict of registered components by invoking their corresponding Class.attach functions
-        parts = {
-            "categories": Strings.attach(f"{user_defined_name}.categories"),
-            "codes": pdarray.attach(f"{user_defined_name}.codes"),
-            "_akNAcode": pdarray.attach(f"{user_defined_name}._akNAcode"),
-        }
-
-        # Add optional pieces only if they're contained in the registry
-        registry = list_registry()
-        if f"{user_defined_name}.permutation" in registry:
-            parts["permutation"] = pdarray.attach(f"{user_defined_name}.permutation")
-        if f"{user_defined_name}.segments" in registry:
-            parts["segments"] = pdarray.attach(f"{user_defined_name}.segments")
-
-        c = Categorical(None, **parts)  # Call constructor with unpacked kwargs
-        c.name = user_defined_name  # Update our name
-        return c
+        repMsg = generic_msg(
+            cmd="attach",
+            args={
+                "name": user_defined_name,
+                "objtype": Categorical.objtype,
+            },
+        )
+        return cls.from_return_msg(repMsg)
 
     @staticmethod
     @typechecked
@@ -1252,17 +1306,7 @@ class Categorical:
         --------
         register, unregister, attach, is_registered
         """
-        # We have 4 subcomponents, unregister each of them
-        Strings.unregister_strings_by_name(f"{user_defined_name}.categories")
-        unregister_pdarray_by_name(f"{user_defined_name}.codes")
-        unregister_pdarray_by_name(f"{user_defined_name}._akNAcode")
-
-        # Unregister optional pieces only if they are contained in the registry
-        registry = list_registry()
-        if f"{user_defined_name}.permutation" in registry:
-            unregister_pdarray_by_name(f"{user_defined_name}.permutation")
-        if f"{user_defined_name}.segments" in registry:
-            unregister_pdarray_by_name(f"{user_defined_name}.segments")
+        generic_msg(cmd="unregister", args={"name": user_defined_name})
 
     @staticmethod
     @typechecked

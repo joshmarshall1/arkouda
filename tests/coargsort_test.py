@@ -161,7 +161,7 @@ class CoargsortTest(ArkoudaTest):
 
     def test_coargsort_categorical(self):
         string = ak.array(["a", "b", "a", "b", "c"])
-        cat = ak.Categorical(string)
+        cat = ak.categorical(string)
         cat_from_codes = ak.Categorical.from_codes(
             codes=ak.array([0, 1, 0, 1, 2]), categories=ak.array(["a", "b", "c"])
         )

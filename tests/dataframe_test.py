@@ -165,7 +165,7 @@ class DataFrameTest(ArkoudaTest):
             "c_1": ak.arange(3, 6, 1),
             "c_2": ak.arange(6, 9, 1),
             "c_3": str_arr,
-            "c_4": ak.Categorical(str_arr),
+            "c_4": ak.categorical(str_arr),
             "c_5": ak.segarray(ak.array([0, 9, 14]), ak.arange(20)),
         }
         akdf = ak.DataFrame(df_dict)

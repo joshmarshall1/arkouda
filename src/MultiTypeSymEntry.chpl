@@ -12,6 +12,8 @@ module MultiTypeSymEntry
     public use SymArrayDmap;
     use MultiTypeSymbolTable;
 
+    use SegmentedString;
+
     private config const logLevel = ServerConfig.logLevel;
     const genLogger = new Logger(logLevel);
 
@@ -438,13 +440,14 @@ module MultiTypeSymEntry
     class CategoricalSymEntry:GenSymEntry {
         type etype = string;
 
-        var categoriesEntry: borrowed SegStringSymEntry(string);
+        var categoriesEntry: shared SegStringSymEntry(string);
         var codesEntry: shared SymEntry(int);
         var permEntry: shared SymEntry(int);
         var segmentsEntry: shared SymEntry(int);
+        var naEntry: shared SymEntry(int);
 
-        proc init(categoriesEntry: borrowed SegStringSymEntry, codesEntry: shared SymEntry,
-                    permEntry: shared SymEntry, segmentsEntry: shared SymEntry, type etype) {
+        proc init(categoriesEntry: shared SegStringSymEntry, codesEntry: shared SymEntry,
+                    permEntry: shared SymEntry, segmentsEntry: shared SymEntry, naEntry: shared SymEntry, type etype) {
             super.init(etype, categoriesEntry.size);
             this.entryType = SymbolEntryType.CategoricalSymEntry;
             assignableTypes.add(this.entryType);
@@ -452,10 +455,11 @@ module MultiTypeSymEntry
             this.codesEntry = codesEntry;
             this.permEntry = permEntry;
             this.segmentsEntry = segmentsEntry;
+            this.naEntry = naEntry;
 
             this.dtype = whichDtype(etype);
             this.itemsize = this.categoriesEntry.itemsize;
-            this.size = this.segmentsEntry.size;
+            this.size = this.codesEntry.size;
             this.ndim = this.segmentsEntry.ndim;
             this.shape = this.segmentsEntry.shape;
         }

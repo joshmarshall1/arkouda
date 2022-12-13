@@ -421,7 +421,7 @@ class RegistrationTest(ArkoudaTest):
         Test register, is_registered, attach, unregister, unregister_categorical_by_name
         """
         cleanup()  # Make sure we start with a clean registry
-        c = ak.Categorical(ak.array([f"my_cat {i}" for i in range(1, 11)]))
+        c = ak.categorical(ak.array([f"my_cat {i}" for i in range(1, 11)]))
         self.assertFalse(c.is_registered(), "test_me should be unregistered")
         self.assertTrue(
             c.register("test_me").is_registered(), "test_me categorical should be registered"
@@ -550,7 +550,7 @@ class RegistrationTest(ArkoudaTest):
 
     def test_categorical_groupby_attach(self):
         c = ak.array(["abc", "123", "abc"])
-        cat = ak.Categorical(c)
+        cat = ak.categorical(c)
         catGroup = ak.GroupBy(cat)
         catGroup.register("categorical_test")
         catAttach = ak.GroupBy.attach("categorical_test")
@@ -569,7 +569,7 @@ class RegistrationTest(ArkoudaTest):
     def test_sequence_groupby_attach(self):
         a = ak.randint(0, 10, 11)
         b = ak.array(["The", "ants", "go", "marching", "one", "by", "one", ",", "hurrah", ",", "hurrah"])
-        c = ak.Categorical(b)
+        c = ak.categorical(b)
         lx = [a, b, c]
         group = ak.GroupBy(lx)
         group.register("sequenceTest")
@@ -599,14 +599,14 @@ class RegistrationTest(ArkoudaTest):
     def test_groupby_register(self):
         a = ak.randint(0, 10, 11)
         b = ak.array(["The", "ants", "go", "marching", "one", "by", "one", ",", "hurrah", ",", "hurrah"])
-        c = ak.Categorical(b)
+        c = ak.categorical(b)
 
         # New variable declarations for sequence
         seqA = ak.randint(0, 10, 11)
         seqB = ak.array(
             ["The", "ants", "go", "marching", "one", "by", "one", ",", "hurrah", ",", "hurrah"]
         )
-        seqC = ak.Categorical(seqB)
+        seqC = ak.categorical(seqB)
         seq = [seqA, seqB, seqC]
         groupA = ak.GroupBy(a)
         groupB = ak.GroupBy(b)

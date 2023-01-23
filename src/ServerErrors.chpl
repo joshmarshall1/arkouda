@@ -173,6 +173,19 @@ module ServerErrors {
     }
 
     /*
+     * The Type Error is thrown if a Type is found to be different from what was expected
+     */
+    class TypeError: ErrorWithContext {
+
+        proc init(msg : string, lineNumber: int, routineName: string, 
+                                                           moduleName: string) { 
+           super.init(msg,lineNumber,routineName,moduleName,errorClass='TypeError'); 
+        } 
+
+        proc init(){ super.init(); }
+    }
+
+    /*
      * Generatea a detailed, context-rich error message for errors such as instances of 
      * built-in Chapel Errors in a format that matches the Arkouda ErrorWithContext
      * error message format. 

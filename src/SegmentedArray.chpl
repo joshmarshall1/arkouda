@@ -246,6 +246,41 @@ module SegmentedArray {
             return + reduce non_empty:int;
         }
 
+        proc concatenate(segarr: SegArray, axis: int = 0, st: borrowed SymTab): SegArray throws {
+            if segarr.composite.etype != this.composite.etype {
+                throw new owned TypeError(
+                    msg="Type mismatch between SegArrays %s and %s.".format(segarr.name, this.name),
+                    getLineNumber(),
+                    getRoutineName(),
+                    getModuleName());
+            }
+
+            if axis == 0 {
+                var segs = segarr.segments.a;
+                segs += this.values.size;
+
+                var newSize = segarr.values.size + this.values.size;
+                var segSize = segarr.size + this.size;
+
+                var newSegs: [0..#segSize] int;
+                newSegs[0..#this.segments.size] = this.segments.a;
+                newSegs[this.segments.size..#segs.size] = segs;
+
+                var newVals: [0..#newSize] this.composite.etype;
+                newVals[0..#this.values.size] = this.values.a;
+                newVals[this.values.size..#segarr.values.size] = segarr.values.a;
+
+                var seg = getSegArray(newSegs, newVals, st);
+                return seg;
+            } else {
+                throw new owned ArgumentError(
+                    msg="Unknown axis value provided: %i. Supported values are 0 and 1.".format(axis),
+                    getLineNumber(),
+                    getRoutineName(),
+                    getModuleName());
+            }
+        }
+
         proc getComponentName(obj: SymEntry, st: borrowed SymTab): string throws {
             // early out if name exists
             if obj.name != "" {
@@ -263,4 +298,76 @@ module SegmentedArray {
             rm.add("lengths", "created " + st.attrib(this.getComponentName(this.lengths, st)));
         }
     }
+
+    proc concatSegArray(segNames: [] string, segSize: int, valSize: int, axis: int, dt: string, st: borrowed SymTab): owned SegArray throws {
+        var dType = str2dtype(dt);
+
+        if dType == DType.Int64 {
+            var sizes = (0, 0);
+            forall n in segNames with (+ reduce sizes) {
+                var seg = getSegArray(n, st, int);
+                sizes[0] += seg.size;
+                sizes[1] += seg.values.size;
+            }
+            
+            var segSize = sizes[0];
+            var valSize = sizes[1];
+
+            var seg = getSegArray(segNames[0], st, int);
+
+            // for x in {1..segNames.size} {
+            //     var sX = getSegArray(segNames[x], st, int);
+            //     seg.concatenate(sX, axis, st);
+            // }
+
+            return seg;
+        }
+        else if dType == DType.UInt64 {
+            var seg = getSegArray(segNames[0], st, uint);
+
+            for x in {1..segNames.size} {
+                var sX = getSegArray(segNames[x], st, uint);
+                seg.concatenate(sX, axis, st);
+            }
+
+            return seg;
+        }
+        else if dType == DType.Float64 {
+            var seg = getSegArray(segNames[0], st, real);
+
+            for x in {1..segNames.size} {
+                var sX = getSegArray(segNames[x], st, real);
+                seg.concatenate(sX, axis, st);
+            }
+
+            return seg;
+        }
+        else if dType == DType.Bool {
+            var seg = getSegArray(segNames[0], st, bool);
+
+            for x in {1..segNames.size} {
+                var sX = getSegArray(segNames[x], st, bool);
+                seg.concatenate(sX, axis, st);
+            }
+
+            return seg;
+        }
+        else if dType == DType.UInt8 {
+            var seg = getSegArray(segNames[0], st, uint(8));
+
+            for x in {1..segNames.size} {
+                var sX = getSegArray(segNames[x], st, uint(8));
+                seg.concatenate(sX, axis, st);
+            }
+
+            return seg;
+        } else {
+            throw new owned ArgumentError (
+                        msg="Unsupported type passed to SegArray concat: %s".format(dType),
+                        getLineNumber(),
+                        getRoutineName(),
+                        getModuleName());
+        }
+    }
+
 }

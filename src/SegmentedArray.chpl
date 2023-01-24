@@ -299,7 +299,7 @@ module SegmentedArray {
         }
     }
 
-    proc concatSegArray(segNames: [] string, segSize: int, valSize: int, axis: int, dt: string, st: borrowed SymTab): owned SegArray throws {
+    proc concatSegArray(segNames: [] string, axis: int, dt: string, st: borrowed SymTab): SegArray throws {
         var dType = str2dtype(dt);
 
         if dType == DType.Int64 {
@@ -313,54 +313,69 @@ module SegmentedArray {
             var segSize = sizes[0];
             var valSize = sizes[1];
 
-            var seg = getSegArray(segNames[0], st, int);
+            var newSegs: [0..#segSize] int;
+            var newVals: [0..#valSize] int;
+            var segAdj: int = 0; // segment size adjustment tracker
+            var valT: int = 0; // total values so far added
+            var tracker = (segSize, valT);
 
-            // for x in {1..segNames.size} {
-            //     var sX = getSegArray(segNames[x], st, int);
-            //     seg.concatenate(sX, axis, st);
-            // }
+            forall n in segNames with (+ reduce tracker) {
+                var segarr = getSegArray(n, st, int);
 
-            return seg;
-        }
-        else if dType == DType.UInt64 {
-            var seg = getSegArray(segNames[0], st, uint);
+                var segs = segarr.segments.a;
+                segs += tracker[1]; // Add total value size of previous arrays to all of this array's segment values
 
-            for x in {1..segNames.size} {
-                var sX = getSegArray(segNames[x], st, uint);
-                seg.concatenate(sX, axis, st);
+                newSegs[tracker[0]..#segarr.segments.size] = segs;
+
+                newVals[tracker[1]..#segarr.values.size] = segarr.values.a;
+
+                tracker[0] += segarr.segments.size;
+                tracker[1] += segarr.values.size;
             }
 
-            return seg;
-        }
-        else if dType == DType.Float64 {
-            var seg = getSegArray(segNames[0], st, real);
-
-            for x in {1..segNames.size} {
-                var sX = getSegArray(segNames[x], st, real);
-                seg.concatenate(sX, axis, st);
-            }
+            var seg = getSegArray(newSegs, newVals, st);
 
             return seg;
-        }
-        else if dType == DType.Bool {
-            var seg = getSegArray(segNames[0], st, bool);
+        // }
+        // else if dType == DType.UInt64 {
+        //     var seg = getSegArray(segNames[0], st, uint);
 
-            for x in {1..segNames.size} {
-                var sX = getSegArray(segNames[x], st, bool);
-                seg.concatenate(sX, axis, st);
-            }
+        //     for x in {1..segNames.size} {
+        //         var sX = getSegArray(segNames[x], st, uint);
+        //         seg.concatenate(sX, axis, st);
+        //     }
 
-            return seg;
-        }
-        else if dType == DType.UInt8 {
-            var seg = getSegArray(segNames[0], st, uint(8));
+        //     return seg;
+        // }
+        // else if dType == DType.Float64 {
+        //     var seg = getSegArray(segNames[0], st, real);
 
-            for x in {1..segNames.size} {
-                var sX = getSegArray(segNames[x], st, uint(8));
-                seg.concatenate(sX, axis, st);
-            }
+        //     for x in {1..segNames.size} {
+        //         var sX = getSegArray(segNames[x], st, real);
+        //         seg.concatenate(sX, axis, st);
+        //     }
 
-            return seg;
+        //     return seg;
+        // }
+        // else if dType == DType.Bool {
+        //     var seg = getSegArray(segNames[0], st, bool);
+
+        //     for x in {1..segNames.size} {
+        //         var sX = getSegArray(segNames[x], st, bool);
+        //         seg.concatenate(sX, axis, st);
+        //     }
+
+        //     return seg;
+        // }
+        // else if dType == DType.UInt8 {
+        //     var seg = getSegArray(segNames[0], st, uint(8));
+
+        //     for x in {1..segNames.size} {
+        //         var sX = getSegArray(segNames[x], st, uint(8));
+        //         seg.concatenate(sX, axis, st);
+        //     }
+
+        //     return seg;
         } else {
             throw new owned ArgumentError (
                         msg="Unsupported type passed to SegArray concat: %s".format(dType),

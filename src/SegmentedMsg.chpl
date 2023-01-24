@@ -1369,13 +1369,11 @@ module SegmentedMsg {
 
   proc segmentedConcatMsg(cmd: string, msgArgs: borrowed MessageArgs, st: borrowed SymTab): MsgTuple throws {
     var count = msgArgs.get("count").getIntValue();
-    var segSize = msgArgs.get("segSize").getIntValue();
-    var valSize = msgArgs.get("valSize").getIntValue();
     var segNames = msgArgs.get("segArrays").getList(count);
     var axis = msgArgs.get("axis").getIntValue();
     var dType = msgArgs.getValueOf("type");
 
-    var seg = concatSegArray(segNames, segSize, valSize, axis, dType, st);
+    var seg = concatSegArray(segNames, axis, dType, st);
 
     var rtnmap: map(string, string);
     seg.fillReturnMap(rtnmap, st);

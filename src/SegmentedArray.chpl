@@ -305,10 +305,10 @@ module SegmentedArray {
         if dType == DType.Int64 {
             var sizes = (0, 0);
             forall n in segNames with (+ reduce sizes) {
-                var seg = getSegArray(n, st, int);
-                sizes[0] += seg.size;
-                sizes[1] += seg.values.size;
-            }
+                var segarr = getSegArray(n, st, int);
+                sizes[0] += segarr.size;
+                sizes[1] += segarr.values.size;
+            } 
             
             var segSize = sizes[0];
             var valSize = sizes[1];
@@ -317,7 +317,7 @@ module SegmentedArray {
             var newVals: [0..#valSize] int;
             var segAdj: int = 0; // segment size adjustment tracker
             var valT: int = 0; // total values so far added
-            var tracker = (segSize, valT);
+            var tracker = (segAdj, valT);
 
             forall n in segNames with (+ reduce tracker) {
                 var segarr = getSegArray(n, st, int);
@@ -326,7 +326,6 @@ module SegmentedArray {
                 segs += tracker[1]; // Add total value size of previous arrays to all of this array's segment values
 
                 newSegs[tracker[0]..#segarr.segments.size] = segs;
-
                 newVals[tracker[1]..#segarr.values.size] = segarr.values.a;
 
                 tracker[0] += segarr.segments.size;

@@ -170,7 +170,7 @@ def refinement(N):
     Coargsort of two arrays, where the first is already sorted
     but has many repeated values
     """
-    groupsize = 100
+    groupsize = 100 if N != 100 else 10
     a = ak.arange(N // 2) // groupsize
     factor = 2**32 // a.max()
     a *= factor
